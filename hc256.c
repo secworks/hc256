@@ -28,21 +28,54 @@
   POSSIBILITY OF SUCH DAMAGE. */
 
 #include "hc.h"
+#include <string.h>
+#include <stdio.h>
+
+
+void dump_W(uint32_t* W)
+{
+  uint32_t i;
+  printf("Contents of W:\n");
+  for (i = 0; i < DUMP_W_ELEMENTS; i = i + 4) {
+    printf("W[%04d..%04d]: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+          i, (i + 3), W[i], W[i + 1], W[i + 2], W[i + 3]);
+  }
+  printf("\n");
+}
+
+
+void dump_PQ(hc_ctx* c)
+{
+  uint32_t i;
+  printf("Contents of P:\n");
+  for (i = 0; i < DUMP_PQ_ELEMENTS; i = i + 4) {
+    printf("P[%04d..%04d]: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+          i, (i + 3), c->P[i], c->P[i + 1], c->P[i + 2], c->P[i + 3]);
+  }
+  printf("\n");
+
+  printf("Contents of Q:\n");
+  for (i = 0; i < DUMP_PQ_ELEMENTS; i = i + 4) {
+    printf("Q[%04d..%04d]: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+          i, (i + 3), c->Q[i], c->Q[i + 1], c->Q[i + 2], c->Q[i + 3]);
+  }
+}
+
 
 // key stream generation function
 uint32_t hc256_generate(hc_ctx* c)
 {
     uint32_t r, i, i3, i10, i12, i1023;
     uint32_t *x0, *x1;
-    uint32_t w0, w1, w2, w3, t;
-    
+    uint32_t w0, w1, t;
+
     t=c->ctr;
-    
+
     c->ctr = (c->ctr+1) & 0x7ff;
-    
+
     x0=c->P;
     x1=c->Q;
-    
+
     if (t > 0x3ff) {
       x0=c->Q;
       x1=c->P;
@@ -53,12 +86,12 @@ uint32_t hc256_generate(hc_ctx* c)
     i10   = (i - 10)   & 0x3ff;
     i1023 = (i - 1023) & 0x3ff;
 
-    x0[i] += x0[i10] + 
-            (ROTR32(x0[i3], 10) ^ ROTL32(x0[i1023], 9)) + 
+    x0[i] += x0[i10] +
+            (ROTR32(x0[i3], 10) ^ ROTL32(x0[i1023], 9)) +
             x1[(x0[i3] ^ x0[i1023]) & 0x3ff];
-    
+
     i12 = (i - 12) & 0x3ff;
-    
+
     w0=x0[i];
     w1=x0[i12];
 
@@ -68,43 +101,47 @@ uint32_t hc256_generate(hc_ctx* c)
       x1 += 1024/4;
     }
     r ^= w0;
-    
+
     return r;
 }
 
-#define SIG0(x)(ROTR32((x),  7) ^ ROTR32((x), 18) ^ ((x) >>  3))
-#define SIG1(x)(ROTR32((x), 17) ^ ROTR32((x), 19) ^ ((x) >> 10))
 
 // both key and iv must be 32 bytes / 256-bits!
 void hc256_setkey(hc_ctx *c, void *kiv)
 {
     uint32_t W[4096], i;
     uint32_t *pq, *wp;
-    
+
     // 1. set counter
     c->ctr = 0;
-    
+
     // 2. copy 512-bit key and iv to local workspace
     memcpy (W, kiv, 64);
 
     // 3. expand buffer using SHA-256 macros
     for (i=16; i<4096; i++) {
-      W[i] = SIG1(W[i-2])  + W[i-7]  + 
-             SIG0(W[i-15]) + W[i-16] + i; 
+      W[i] = SIG1(W[i-2])  + W[i-7]  +
+             SIG0(W[i-15]) + W[i-16] + i;
     }
-    
+
+    if (DEBUG_OUTPUT)
+      dump_W(&W[0]);
+
     pq = c->T;
     wp = &W[512];
-    
+
     // 6. set the P and Q tables
-    for (i=0; i<2048; i++) { 
+    for (i=0; i<2048; i++) {
       *pq++ = *wp++;
     }
-    
+
     // 7. run cipher 4096 iterations before generating output
     for (i=0; i<4096; i++) {
       hc256_generate(c);
     }
+
+    if (DEBUG_OUTPUT)
+      dump_PQ(c);
 }
 
 // encrypt/decrypt data in place
@@ -112,7 +149,7 @@ void hc256_crypt(hc_ctx *c, void *in, uint32_t inlen)
 {
   uint32_t i, j, w;
   uint8_t *p=(uint8_t*)in;
-  
+
   // encrypt all bytes
   for (i=0; i<inlen;) {
     w = hc256_generate(c);
@@ -123,4 +160,3 @@ void hc256_crypt(hc_ctx *c, void *in, uint32_t inlen)
     }
   }
 }
-
