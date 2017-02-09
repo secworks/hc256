@@ -31,6 +31,7 @@
 #include <string.h>
 #include <stdio.h>
 
+#define VERBOSE 0
 
 void dump_W(uint32_t* W)
 {
@@ -59,6 +60,7 @@ void dump_PQ(hc_ctx* c)
     printf("Q[%04d..%04d]: 0x%08x 0x%08x 0x%08x 0x%08x\n",
           i, (i + 3), c->Q[i], c->Q[i + 1], c->Q[i + 2], c->Q[i + 3]);
   }
+  printf("\n");
 }
 
 
@@ -68,6 +70,10 @@ uint32_t hc256_generate(hc_ctx* c)
     uint32_t r, i, i3, i10, i12, i1023;
     uint32_t *x0, *x1;
     uint32_t w0, w1, t;
+    uint32_t xxory;
+    uint32_t rot10;
+    uint32_t rot23;
+    uint32_t tmp;
 
     t=c->ctr;
 
@@ -85,10 +91,26 @@ uint32_t hc256_generate(hc_ctx* c)
     i3    = (i - 3)    & 0x3ff;
     i10   = (i - 10)   & 0x3ff;
     i1023 = (i - 1023) & 0x3ff;
+    xxory = (x0[i3] ^ x0[i1023]) & 0x3ff;
+    rot10 = ROTR32(x0[i3], 10);
+    rot23 = ROTL32(x0[i1023], 9);
+    tmp = (rot10 ^ rot23) + x1[xxory];
 
-    x0[i] += x0[i10] +
-            (ROTR32(x0[i3], 10) ^ ROTL32(x0[i1023], 9)) +
-            x1[(x0[i3] ^ x0[i1023]) & 0x3ff];
+    if (VERBOSE) {
+      printf("i = %04d, i3 = 0%04d, i10 = %04d, i1023 = %04d\n", i, i3, i10, i1023);
+      printf("x0[i] = 0x%08x, x0[i3] = 0x%08x, x0[i10] = 0x%08x, x0[i023] = 0x%08x \n",
+             x0[i], x0[i3], x0[i10], x0[i1023]);
+      printf("In g1. x = 0x%08x, y = 0x%08x, res = 0x%08x\n", x0[i3], x0[i1023], tmp);
+      printf("x ^ y = 0x%08x, q[x^y] = 0x%08x, rot10 = 0x%08x, rot23 = 0x%08x\n",
+             xxory, x1[xxory], rot10, rot23);
+    }
+
+
+    x0[i] += x0[i10] + tmp;
+
+    if (VERBOSE) {
+      printf("New x0[%03d] = 0x%08x\n\n", i, x0[i]);
+    }
 
     i12 = (i - 12) & 0x3ff;
 
@@ -135,13 +157,22 @@ void hc256_setkey(hc_ctx *c, void *kiv)
       *pq++ = *wp++;
     }
 
+    if (DEBUG_OUTPUT) {
+      printf("P and Q before internal update.\n");
+      dump_PQ(c);
+    }
+
     // 7. run cipher 4096 iterations before generating output
     for (i=0; i<4096; i++) {
       hc256_generate(c);
     }
+    printf("\n");
 
-    if (DEBUG_OUTPUT)
+    if (DEBUG_OUTPUT) {
+      printf("P and Q after internal update.\n");
       dump_PQ(c);
+      printf("\n");
+    }
 }
 
 // encrypt/decrypt data in place

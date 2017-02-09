@@ -34,8 +34,8 @@
 
 // Defines for debugging
 #define DEBUG_OUTPUT 1
-#define DUMP_W_ELEMENTS 128
-#define DUMP_PQ_ELEMENTS 16
+#define DUMP_W_ELEMENTS 64
+#define DUMP_PQ_ELEMENTS 64
 
 
 #define U8V(v)  ((uint8_t)(v)  & 0xFFU)
